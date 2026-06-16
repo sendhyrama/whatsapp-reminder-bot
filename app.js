@@ -19,32 +19,43 @@ app.get("/", (req, res) => {
 // ── Webhook endpoint ───────────────────────────────────────────────────────────
 // Fonnte will POST to this URL every time a message arrives.
 app.post("/webhook", async (req, res) => {
-  // Acknowledge immediately — Fonnte expects a fast 200 response
   res.sendStatus(200);
 
   const body = req.body;
-
-  // Log incoming payload for debugging
   console.log("[Webhook] Incoming:", JSON.stringify(body, null, 2));
 
-  // Fonnte payload fields:
-  // body.message  — the message text
-  // body.sender   — sender's WhatsApp number
-  // body.device   — your device number (the bot's number)
-  const message = body.message || body.text || "";
-  const sender  = body.sender || "";
+  // ── Extract correct fields from Fonnte payload ───────────────────────────
+  const message   = body.message || "";        // the text typed
+  const sender    = body.member  || "";        // person who typed (real sender)
+  const groupId   = body.pengirim || body.sender || ""; // group ID
+  const isGroup   = body.isgroup || false;
+  const botNumber = body.device  || "";        // your bot's own number
 
   if (!message) {
-    console.log("[Webhook] Empty message received. Skipping.");
+    console.log("[Webhook] Empty message. Skipping.");
     return;
   }
 
-  // Process the command and get a reply
+  // ── Only respond to group messages ───────────────────────────────────────
+  if (!isGroup) {
+    console.log("[Webhook] Not a group message. Skipping.");
+    return;
+  }
+
+  // ── Ignore messages sent by the bot itself ───────────────────────────────
+  if (sender === botNumber) {
+    console.log("[Webhook] Ignoring own message.");
+    return;
+  }
+
+  console.log(`[Webhook] From: ${sender} | Group: ${groupId} | Message: "${message}"`);
+
+  // ── Process command ──────────────────────────────────────────────────────
   const reply = handleCommand(message, sender);
 
   if (reply) {
-    // Send reply to the group (or back to sender if you want personal reply)
-    const target = process.env.GROUP_TARGET;
+    // Send reply to the group using the group ID from the payload
+    const target = groupId || process.env.GROUP_TARGET;
     await sendMessage(target, reply);
   }
 });
