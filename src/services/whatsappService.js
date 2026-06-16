@@ -4,27 +4,24 @@ require("dotenv").config();
 const FONNTE_API_URL = "https://api.fonnte.com/send";
 
 /**
- * Send a WhatsApp message to a target (group or personal) via Fonnte.
- * @param {string} target - WhatsApp number or group ID
- * @param {string} message - Message text (supports WhatsApp markdown)
- * @returns {Promise<void>}
+ * Send a WhatsApp message via Fonnte.
+ * @param {string} target - Group ID or phone number
+ * @param {string} message - Message text
  */
 async function sendMessage(target, message) {
   try {
-    const response = await axios.post(
-      FONNTE_API_URL,
-      {
-        target,
-        message,
-        delay: 1, // seconds between messages (Fonnte param)
+    const params = new URLSearchParams();
+    params.append("target", target);
+    params.append("message", message);
+    params.append("delay", "1");
+    params.append("countryCode", "62");
+
+    const response = await axios.post(FONNTE_API_URL, params, {
+      headers: {
+        Authorization: process.env.FONNTE_TOKEN,
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      {
-        headers: {
-          Authorization: process.env.FONNTE_TOKEN,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    });
 
     console.log(`[WhatsApp] Message sent to ${target}:`, response.data);
   } catch (error) {
