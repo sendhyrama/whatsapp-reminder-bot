@@ -4,15 +4,57 @@ require("dotenv").config();
 
 const BOT_MENTION = process.env.BOT_MENTION || "@bot";
 
+/**
+ * Parse "add order" arguments where name can be multi-word.
+ * Uses the date (DD-MM-YYYY) as the anchor point.
+ *
+ * Input:  "My Big Order 21-06-2026 08.00"
+ * Output: { name: "My Big Order", date: "21-06-2026", time: "08.00" }
+ *
+ * @param {string} str - everything after "add order"
+ * @returns {{ name: string, date: string, time: string|null } | null}
+ */
+function parseAddArgs(str) {
+  // Match DD-MM-YYYY anywhere in the string
+  const dateRegex = /(\d{2}-\d{2}-\d{4})/;
+  const match = str.match(dateRegex);
+
+  if (!match) return null;
+
+  const dateIndex = str.indexOf(match[1]);
+  const name = str.slice(0, dateIndex).trim();
+  const rest = str.slice(dateIndex + match[1].length).trim();
+  const time = rest || null;
+
+  return { name, date: match[1], time };
+}
+
+/**
+ * Parse "edit" arguments where name/number is always the first token,
+ * field is second, and new value (possibly multi-word for name) is the rest.
+ *
+ * Input:  "1 name My New Order Name"
+ * Output: { target: "1", field: "name", newValue: "My New Order Name" }
+ *
+ * @param {string} str - everything after "edit"
+ * @returns {{ target: string, field: string, newValue: string } | null}
+ */
+function parseEditArgs(str) {
+  const parts = str.trim().split(/\s+/);
+  if (parts.length < 3) return null;
+
+  const target = parts[0];
+  const field = parts[1];
+  // Everything after field = new value (supports multi-word names)
+  const newValue = parts.slice(2).join(" ");
+
+  return { target, field, newValue };
+}
+
 function isBotMentioned(message) {
   return message.toLowerCase().includes(BOT_MENTION.toLowerCase());
 }
 
-/**
- * Build a formatted order line for list display.
- * @param {object} order
- * @param {number} index - 1-based
- */
 function formatOrderLine(order, index) {
   const time = order.time ? ` ${formatTime(order.time)}` : "";
   return `${index}. *${order.name}* — ${formatDate(order.date)}${time}`;
@@ -25,25 +67,30 @@ function handleCommand(message, sender) {
     return null;
   }
 
-  // Remove bot mention and normalize
   const cleaned = message
     .toLowerCase()
     .replace(BOT_MENTION.toLowerCase(), "")
     .trim();
 
-  // ── ADD ORDER ────────────────────────────────────────────────────────────
-  // Usage: @bot add order <name> <DD-MM-YYYY> [HH.MM]
-  if (cleaned.startsWith("add order")) {
-    const parts = cleaned.replace("add order", "").trim().split(/\s+/);
+  // We need the original message (preserve casing) for name extraction
+  const original = message
+    .replace(new RegExp(BOT_MENTION, "i"), "")
+    .trim();
 
-    if (parts.length < 2) {
+  // ── ADD ORDER ─────────────────────────────────────────────────────────────
+  // Usage: @bot add order <name can be multi word> <DD-MM-YYYY> [HH.MM]
+  if (cleaned.startsWith("add order")) {
+    const argStr = original.replace(/^add order\s*/i, "");
+    const parsed = parseAddArgs(argStr);
+
+    if (!parsed || !parsed.name || !parsed.date) {
       return (
         "⚠️ Usage: `@bot add order <name> <DD-MM-YYYY> [HH.MM]`\n" +
-        "Example: `@bot add order ABC 21-06-2026 08.00`"
+        "Example: `@bot add order My Big Order 21-06-2026 08.00`"
       );
     }
 
-    const [name, date, time] = parts;
+    const { name, date, time } = parsed;
 
     if (!isValidDate(date)) {
       return (
@@ -62,7 +109,6 @@ function handleCommand(message, sender) {
     }
 
     const result = addOrder(name.toUpperCase(), date, time || null);
-
     if (!result.success) return result.message;
 
     const o = result.order;
@@ -85,13 +131,14 @@ function handleCommand(message, sender) {
 
   // ── DELETE ───────────────────────────────────────────────────────────────
   // Usage: @bot delete <name|number>
+  // Name can be multi-word here too e.g. "@bot delete My Big Order"
   if (cleaned.startsWith("delete")) {
-    const target = cleaned.replace("delete", "").trim();
+    const target = original.replace(/^delete\s*/i, "").trim();
 
     if (!target) {
       return (
         "⚠️ Usage: `@bot delete <name|number>`\n" +
-        "Example: `@bot delete ABC` or `@bot delete 1`"
+        "Example: `@bot delete My Big Order` or `@bot delete 1`"
       );
     }
 
@@ -105,36 +152,32 @@ function handleCommand(message, sender) {
     );
   }
 
-  // ── EDIT ─────────────────────────────────────────────────────────────────
+  // ── EDIT ──────────────────────────────────────────────────────────────────
   // Usage:
-  //   @bot edit <name|number> name <newname>
+  //   @bot edit <name|number> name <new name can be multi word>
   //   @bot edit <name|number> date <DD-MM-YYYY>
   //   @bot edit <name|number> time <HH.MM>
-  //   @bot edit <name|number> time clear    ← remove time
+  //   @bot edit <name|number> time clear
   if (cleaned.startsWith("edit")) {
-    const parts = cleaned.replace("edit", "").trim().split(/\s+/);
+    const argStr = original.replace(/^edit\s*/i, "").trim();
+    const parsed = parseEditArgs(argStr);
 
-    // parts[0] = name or number
-    // parts[1] = field (name | date | time)
-    // parts[2] = new value
-    if (parts.length < 3) {
+    if (!parsed) {
       return (
         "⚠️ Usage:\n" +
-        "`@bot edit <name|number> name <newname>`\n" +
+        "`@bot edit <name|number> name <new name>`\n" +
         "`@bot edit <name|number> date <DD-MM-YYYY>`\n" +
         "`@bot edit <name|number> time <HH.MM>`\n" +
         "`@bot edit <name|number> time clear`"
       );
     }
 
-    const [target, field, newValue] = parts;
+    const { target, field, newValue } = parsed;
 
-    // Validate field
-    if (!["name", "date", "time"].includes(field)) {
+    if (!["name", "date", "time"].includes(field.toLowerCase())) {
       return `⚠️ Unknown field: *${field}*. Use: name, date, or time.`;
     }
 
-    // Build updates object
     const updates = {};
 
     if (field === "name") {
@@ -150,8 +193,7 @@ function handleCommand(message, sender) {
       updates.date = newValue;
 
     } else if (field === "time") {
-      if (newValue === "clear") {
-        // Allow clearing the time
+      if (newValue.toLowerCase() === "clear") {
         updates.time = null;
       } else if (!isValidTime(newValue)) {
         return (
@@ -175,13 +217,13 @@ function handleCommand(message, sender) {
     );
   }
 
-  // ── HELP / FALLBACK ───────────────────────────────────────────────────────
+  // ── HELP ──────────────────────────────────────────────────────────────────
   return (
     "🤖 *Available commands:*\n" +
     "`@bot add order <name> <DD-MM-YYYY> [HH.MM]`\n" +
     "`@bot list`\n" +
     "`@bot delete <name|number>`\n" +
-    "`@bot edit <name|number> name <newname>`\n" +
+    "`@bot edit <name|number> name <new name>`\n" +
     "`@bot edit <name|number> date <DD-MM-YYYY>`\n" +
     "`@bot edit <name|number> time <HH.MM>`"
   );
