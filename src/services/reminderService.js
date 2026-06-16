@@ -11,10 +11,13 @@ require("dotenv").config();
  * @returns {string}
  */
 function buildReminderMessage(hLabel, order) {
+  const { formatDate, formatTime } = require("../utils/dateUtils");
+  const timeStr = order.time ? `\nTime: *${formatTime(order.time)}*` : "";
+  
   return (
     `🔔 *Reminder ${hLabel}*\n` +
     `Order: *${order.name}*\n` +
-    `Date: ${formatDate(order.date)}\n` +
+    `Date: ${formatDate(order.date)}${timeStr}\n` +
     `Please prepare 🙏`
   );
 }
