@@ -4,34 +4,64 @@ const customParseFormat = require("dayjs/plugin/customParseFormat");
 dayjs.extend(customParseFormat);
 
 /**
- * Validate that a date string is in YYYY-MM-DD format and is a real date.
+ * Validate DD-MM-YYYY format.
  * @param {string} dateStr
  * @returns {boolean}
  */
 function isValidDate(dateStr) {
-  return dayjs(dateStr, "YYYY-MM-DD", true).isValid();
+  return dayjs(dateStr, "DD-MM-YYYY", true).isValid();
 }
 
 /**
- * Format a date string to a human-readable format.
- * e.g. "2026-06-20" → "20 June 2026"
- * @param {string} dateStr - YYYY-MM-DD
+ * Validate HH.MM time format (24h).
+ * @param {string} timeStr
+ * @returns {boolean}
+ */
+function isValidTime(timeStr) {
+  if (!timeStr) return false;
+  const regex = /^([01]\d|2[0-3])\.([0-5]\d)$/;
+  return regex.test(timeStr);
+}
+
+/**
+ * Format DD-MM-YYYY to human-readable.
+ * e.g. "21-06-2026" → "21 June 2026"
+ * @param {string} dateStr - DD-MM-YYYY
  * @returns {string}
  */
 function formatDate(dateStr) {
-  return dayjs(dateStr).format("D MMMM YYYY");
+  return dayjs(dateStr, "DD-MM-YYYY").format("D MMMM YYYY");
 }
 
 /**
- * Calculate how many days until the given date (from today).
- * Returns a negative number if the date has passed.
- * @param {string} dateStr - YYYY-MM-DD
+ * Format HH.MM to HH:MM for display.
+ * e.g. "08.00" → "08:00"
+ * @param {string} timeStr
+ * @returns {string}
+ */
+function formatTime(timeStr) {
+  if (!timeStr) return null;
+  return timeStr.replace(".", ":");
+}
+
+/**
+ * Calculate days until a DD-MM-YYYY date from today.
+ * @param {string} dateStr - DD-MM-YYYY
  * @returns {number}
  */
 function daysUntil(dateStr) {
   const today = dayjs().startOf("day");
-  const target = dayjs(dateStr).startOf("day");
+  const target = dayjs(dateStr, "DD-MM-YYYY").startOf("day");
   return target.diff(today, "day");
 }
 
-module.exports = { isValidDate, formatDate, daysUntil };
+/**
+ * Convert DD-MM-YYYY to YYYY-MM-DD for internal sorting.
+ * @param {string} dateStr - DD-MM-YYYY
+ * @returns {string}
+ */
+function toSortable(dateStr) {
+  return dayjs(dateStr, "DD-MM-YYYY").format("YYYY-MM-DD");
+}
+
+module.exports = { isValidDate, isValidTime, formatDate, formatTime, daysUntil, toSortable };
