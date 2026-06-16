@@ -4,8 +4,36 @@ require("dotenv").config();
 
 const BOT_MENTION = process.env.BOT_MENTION || "@bot";
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 /**
- * Parse "add order" arguments where name can be multi-word.
+ * Validate order name:
+ * - Must not be empty
+ * - Max 3 words
+ * @param {string} name
+ * @returns {{ valid: boolean, message: string|null }}
+ */
+function validateName(name) {
+  if (!name || !name.trim()) {
+    return { valid: false, message: "⚠️ Order name cannot be empty." };
+  }
+
+  const wordCount = name.trim().split(/\s+/).length;
+  if (wordCount > 3) {
+    return {
+      valid: false,
+      message:
+        `⚠️ Order name too long: *${name}*\n` +
+        `Max 3 words allowed.\n` +
+        `Example: \`My Big Order\``,
+    };
+  }
+
+  return { valid: true, message: null };
+}
+
+/**
+ * Parse "add order" arguments where name can be multi-word (max 3 words).
  * Uses the date (DD-MM-YYYY) as the anchor point.
  *
  * Input:  "My Big Order 21-06-2026 08.00"
@@ -30,11 +58,13 @@ function parseAddArgs(str) {
 }
 
 /**
- * Parse "edit" arguments where name/number is always the first token,
- * field is second, and new value (possibly multi-word for name) is the rest.
+ * Parse "edit" arguments.
+ * - target = first token (name or number)
+ * - field  = second token (name | date | time)
+ * - newValue = everything after field (supports multi-word names)
  *
- * Input:  "1 name My New Order Name"
- * Output: { target: "1", field: "name", newValue: "My New Order Name" }
+ * Input:  "1 name My New Order"
+ * Output: { target: "1", field: "name", newValue: "My New Order" }
  *
  * @param {string} str - everything after "edit"
  * @returns {{ target: string, field: string, newValue: string } | null}
@@ -44,41 +74,77 @@ function parseEditArgs(str) {
   if (parts.length < 3) return null;
 
   const target = parts[0];
-  const field = parts[1];
+  const field = parts[1].toLowerCase();
   // Everything after field = new value (supports multi-word names)
   const newValue = parts.slice(2).join(" ");
 
   return { target, field, newValue };
 }
 
+/**
+ * Check if a message is directed at the bot.
+ * @param {string} message
+ * @returns {boolean}
+ */
 function isBotMentioned(message) {
   return message.toLowerCase().includes(BOT_MENTION.toLowerCase());
 }
 
+/**
+ * Format a single order as a list line.
+ * e.g. "1. *MY ORDER* — 21 June 2026 08:00"
+ * @param {object} order
+ * @param {number} index - 1-based
+ * @returns {string}
+ */
 function formatOrderLine(order, index) {
   const time = order.time ? ` ${formatTime(order.time)}` : "";
   return `${index}. *${order.name}* — ${formatDate(order.date)}${time}`;
 }
 
+// ── Main Handler ──────────────────────────────────────────────────────────────
+
+/**
+ * Parse and handle an incoming WhatsApp message.
+ * Returns a reply string, or null if the bot should not respond.
+ *
+ * Commands:
+ *   @bot add order <name 1-3 words> <DD-MM-YYYY> [HH.MM]
+ *   @bot list
+ *   @bot delete <name|number>
+ *   @bot edit <name|number> name <new name>
+ *   @bot edit <name|number> date <DD-MM-YYYY>
+ *   @bot edit <name|number> time <HH.MM>
+ *   @bot edit <name|number> time clear
+ *
+ * @param {string} message - Raw incoming message text
+ * @param {string} sender  - Sender's WhatsApp number
+ * @returns {string|null}
+ */
 function handleCommand(message, sender) {
+  // ── Guard: ignore if bot is not mentioned ─────────────────────────────────
   if (!isBotMentioned(message)) return null;
 
+  // ── Guard: ignore the bot's own messages ──────────────────────────────────
   if (process.env.BOT_OWN_NUMBER && sender === process.env.BOT_OWN_NUMBER) {
+    console.log("[Bot] Ignoring own message.");
     return null;
   }
 
+  // Lowercase version for command matching
   const cleaned = message
     .toLowerCase()
     .replace(BOT_MENTION.toLowerCase(), "")
     .trim();
 
-  // We need the original message (preserve casing) for name extraction
+  // Original casing version for name extraction (preserve user's casing)
   const original = message
     .replace(new RegExp(BOT_MENTION, "i"), "")
     .trim();
 
   // ── ADD ORDER ─────────────────────────────────────────────────────────────
-  // Usage: @bot add order <name can be multi word> <DD-MM-YYYY> [HH.MM]
+  // Usage: @bot add order <name max 3 words> <DD-MM-YYYY> [HH.MM]
+  // Example: @bot add order My Big Order 21-06-2026 08.00
   if (cleaned.startsWith("add order")) {
     const argStr = original.replace(/^add order\s*/i, "");
     const parsed = parseAddArgs(argStr);
@@ -86,12 +152,18 @@ function handleCommand(message, sender) {
     if (!parsed || !parsed.name || !parsed.date) {
       return (
         "⚠️ Usage: `@bot add order <name> <DD-MM-YYYY> [HH.MM]`\n" +
-        "Example: `@bot add order My Big Order 21-06-2026 08.00`"
+        "Example: `@bot add order My Big Order 21-06-2026 08.00`\n" +
+        "Note: Name max 3 words."
       );
     }
 
     const { name, date, time } = parsed;
 
+    // Validate name
+    const nameCheck = validateName(name);
+    if (!nameCheck.valid) return nameCheck.message;
+
+    // Validate date
     if (!isValidDate(date)) {
       return (
         `⚠️ Invalid date: *${date}*\n` +
@@ -100,6 +172,7 @@ function handleCommand(message, sender) {
       );
     }
 
+    // Validate time (optional)
     if (time && !isValidTime(time)) {
       return (
         `⚠️ Invalid time: *${time}*\n` +
@@ -120,18 +193,23 @@ function handleCommand(message, sender) {
     );
   }
 
-  // ── LIST ─────────────────────────────────────────────────────────────────
+  // ── LIST ──────────────────────────────────────────────────────────────────
+  // Usage: @bot list
   if (cleaned === "list") {
     const orders = listOrders();
-    if (orders.length === 0) return "📋 No orders saved yet.";
+
+    if (orders.length === 0) {
+      return "📋 No orders saved yet.";
+    }
 
     const lines = orders.map((o, i) => formatOrderLine(o, i + 1));
     return `📋 *Order List (${orders.length}):*\n${lines.join("\n")}`;
   }
 
-  // ── DELETE ───────────────────────────────────────────────────────────────
+  // ── DELETE ────────────────────────────────────────────────────────────────
   // Usage: @bot delete <name|number>
-  // Name can be multi-word here too e.g. "@bot delete My Big Order"
+  // Example: @bot delete My Big Order
+  // Example: @bot delete 1
   if (cleaned.startsWith("delete")) {
     const target = original.replace(/^delete\s*/i, "").trim();
 
@@ -154,7 +232,7 @@ function handleCommand(message, sender) {
 
   // ── EDIT ──────────────────────────────────────────────────────────────────
   // Usage:
-  //   @bot edit <name|number> name <new name can be multi word>
+  //   @bot edit <name|number> name <new name max 3 words>
   //   @bot edit <name|number> date <DD-MM-YYYY>
   //   @bot edit <name|number> time <HH.MM>
   //   @bot edit <name|number> time clear
@@ -168,19 +246,25 @@ function handleCommand(message, sender) {
         "`@bot edit <name|number> name <new name>`\n" +
         "`@bot edit <name|number> date <DD-MM-YYYY>`\n" +
         "`@bot edit <name|number> time <HH.MM>`\n" +
-        "`@bot edit <name|number> time clear`"
+        "`@bot edit <name|number> time clear`\n" +
+        "Note: Name max 3 words."
       );
     }
 
     const { target, field, newValue } = parsed;
 
-    if (!["name", "date", "time"].includes(field.toLowerCase())) {
-      return `⚠️ Unknown field: *${field}*. Use: name, date, or time.`;
+    // Validate field
+    if (!["name", "date", "time"].includes(field)) {
+      return `⚠️ Unknown field: *${field}*\nAllowed fields: name, date, time.`;
     }
 
     const updates = {};
 
     if (field === "name") {
+      // Validate new name
+      const nameCheck = validateName(newValue);
+      if (!nameCheck.valid) return nameCheck.message;
+
       updates.name = newValue.toUpperCase();
 
     } else if (field === "date") {
@@ -194,6 +278,7 @@ function handleCommand(message, sender) {
 
     } else if (field === "time") {
       if (newValue.toLowerCase() === "clear") {
+        // Remove time from order
         updates.time = null;
       } else if (!isValidTime(newValue)) {
         return (
@@ -217,7 +302,7 @@ function handleCommand(message, sender) {
     );
   }
 
-  // ── HELP ──────────────────────────────────────────────────────────────────
+  // ── HELP / FALLBACK ───────────────────────────────────────────────────────
   return (
     "🤖 *Available commands:*\n" +
     "`@bot add order <name> <DD-MM-YYYY> [HH.MM]`\n" +
@@ -225,7 +310,8 @@ function handleCommand(message, sender) {
     "`@bot delete <name|number>`\n" +
     "`@bot edit <name|number> name <new name>`\n" +
     "`@bot edit <name|number> date <DD-MM-YYYY>`\n" +
-    "`@bot edit <name|number> time <HH.MM>`"
+    "`@bot edit <name|number> time <HH.MM>`\n" +
+    "_Name max 3 words. Time is optional (24h format)._"
   );
 }
 
