@@ -17,8 +17,9 @@ const CRON_SCHEDULE = "0 8 * * *";
  * @returns {string}
  */
 function formatOrderLine(order, index) {
+  const cakeStr = order.cake ? ` (${order.cake})` : "";
   const timeStr = order.time ? ` ${formatTime(order.time)}` : "";
-  return `${index}. *${order.name}* — ${formatDate(order.date)}${timeStr}`;
+  return `${index}. *${order.name}*${cakeStr} — ${formatDate(order.date)}${timeStr}`;
 }
 
 /**
@@ -53,7 +54,7 @@ function buildCombinedReminderMessage(grouped) {
   return (
     `📅 *Daily Order Reminder*\n\n` +
     sections.join("\n\n") +
-    `\n\nPlease prepare 🙏`
+    `\n\nTolong disiapin ya 🙏`
   );
 }
 
