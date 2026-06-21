@@ -15,7 +15,7 @@ const BOT_MENTION = process.env.BOT_MENTION || "@bot";
  */
 function validateName(name) {
   if (!name || !name.trim()) {
-    return { valid: false, message: "⚠️ Order name cannot be empty." };
+    return { valid: false, message: "⚠️ Name cannot be empty." };
   }
 
   const wordCount = name.trim().split(/\s+/).length;
@@ -23,9 +23,29 @@ function validateName(name) {
     return {
       valid: false,
       message:
-        `⚠️ Order name too long: *${name}*\n` +
+        `⚠️ Name too long: *${name}*\n` +
         `Max 3 words allowed.\n` +
-        `Example: \`My Big Order\``,
+        `Example: \`Budi Santoso\``,
+    };
+  }
+  return { valid: true, message: null };
+}
+
+/**
+ * Validate cake name (optional):
+ * - Max 5 words if provided
+ */
+function validateCakeName(cake) {
+  if (!cake) return { valid: true, message: null };
+
+  const wordCount = cake.trim().split(/\s+/).length;
+  if (wordCount > 5) {
+    return {
+      valid: false,
+      message:
+        `⚠️ Cake name too long: *${cake}*\n` +
+        `Max 5 words allowed.\n` +
+        `Example: \`(Black Forest Cake)\``,
     };
   }
 
@@ -33,35 +53,53 @@ function validateName(name) {
 }
 
 /**
- * Parse "add order" arguments where name can be multi-word (max 3 words).
- * Uses the date (DD-MM-YYYY) as the anchor point.
+ * Extract cake name wrapped in parentheses from a string,
+ * and return the remaining string with that part removed.
  *
- * Input:  "My Big Order 21-06-2026 08.00"
- * Output: { name: "My Big Order", date: "21-06-2026", time: "08.00" }
- *
- * @param {string} str - everything after "add order"
- * @returns {{ name: string, date: string, time: string|null } | null}
+ * Input:  "Budi Santoso (Black Forest Cake) 21-06-2026 08.00"
+ * Output: { cake: "Black Forest Cake", rest: "Budi Santoso 21-06-2026 08.00" }
+ */
+function extractCakeName(str) {
+  const match = str.match(/\(([^)]+)\)/);
+
+  if (!match) {
+    return { cake: null, rest: str };
+  }
+
+  const cake = match[1].trim();
+  const rest = str.replace(match[0], " ").replace(/\s+/g, " ").trim();
+
+  return { cake, rest };
+}
+
+/**
+ * Parse "add order" arguments:
+ * - name can be multi-word (max 3 words)
+ * - cake name optional, wrapped in (...)
+ * - date (DD-MM-YYYY) used as anchor point
+ * - time optional, comes after date
  */
 function parseAddArgs(str) {
+  const { cake, rest } = extractCakeName(str);
   // Match DD-MM-YYYY anywhere in the string
   const dateRegex = /(\d{2}-\d{2}-\d{4})/;
-  const match = str.match(dateRegex);
+  const match = rest.match(dateRegex);
 
   if (!match) return null;
 
-  const dateIndex = str.indexOf(match[1]);
-  const name = str.slice(0, dateIndex).trim();
-  const rest = str.slice(dateIndex + match[1].length).trim();
-  const time = rest || null;
+  const dateIndex = rest.indexOf(match[1]);
+  const name = rest.slice(0, dateIndex).trim();
+  const after = rest.slice(dateIndex + match[1].length).trim();
+  const time = after || null;
 
-  return { name, date: match[1], time };
+  return { name, cake, date: match[1], time };
 }
 
 /**
  * Parse "edit" arguments.
  * - target = first token (name or number)
- * - field  = second token (name | date | time)
- * - newValue = everything after field (supports multi-word names)
+ * - field  = second token (nama | tanggal | jam | kue)
+ * - newValue = rest of text after field (supports multi-word)
  *
  * Input:  "1 name My New Order"
  * Output: { target: "1", field: "name", newValue: "My New Order" }
@@ -92,14 +130,15 @@ function isBotMentioned(message) {
 
 /**
  * Format a single order as a list line.
- * e.g. "1. *MY ORDER* — 21 June 2026 08:00"
+ * e.g. "1. *BUDI* (Black Forest Cake) — 21 June 2026 08:00"
  * @param {object} order
  * @param {number} index - 1-based
  * @returns {string}
  */
 function formatOrderLine(order, index) {
-  const time = order.time ? ` ${formatTime(order.time)}` : "";
-  return `${index}. *${order.name}* — ${formatDate(order.date)}${time}`;
+  const cakeStr = order.cake ? ` (${order.cake})` : "";
+  const timeStr = order.time ? ` ${formatTime(order.time)}` : "";
+  return `${index}. *${order.name}*${cakeStr} — ${formatDate(order.date)}${timeStr}`;
 }
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
@@ -108,14 +147,16 @@ function formatOrderLine(order, index) {
  * Parse and handle an incoming WhatsApp message.
  * Returns a reply string, or null if the bot should not respond.
  *
- * Commands:
- *   @bot add order <name 1-3 words> <DD-MM-YYYY> [HH.MM]
+ * Commands (Indonesian keywords, English replies):
+ *   @bot add order <nama max 3 kata> [(<kue>)] <DD-MM-YYYY> [HH.MM]
  *   @bot list
- *   @bot delete <name|number>
- *   @bot edit <name|number> name <new name>
- *   @bot edit <name|number> date <DD-MM-YYYY>
- *   @bot edit <name|number> time <HH.MM>
- *   @bot edit <name|number> time clear
+ *   @bot delete <nama|nomor>
+ *   @bot edit <nama|nomor> nama <nama baru>
+ *   @bot edit <nama|nomor> tanggal <DD-MM-YYYY>
+ *   @bot edit <nama|nomor> jam <HH.MM>
+ *   @bot edit <nama|nomor> jam clear
+ *   @bot edit <nama|nomor> kue <kue baru>
+ *   @bot edit <nama|nomor> kue clear
  *
  * @param {string} message - Raw incoming message text
  * @param {string} sender  - Sender's WhatsApp number
@@ -143,7 +184,7 @@ function handleCommand(message, sender) {
     .trim();
 
   // ── ADD ORDER ─────────────────────────────────────────────────────────────
-  // Usage: @bot add order <name max 3 words> <DD-MM-YYYY> [HH.MM]
+  // Usage: @bot add order <name max 3 words> [(<cake name>)] <DD-MM-YYYY> [HH.MM]
   // Example: @bot add order My Big Order 21-06-2026 08.00
   if (cleaned.startsWith("add order")) {
     const argStr = original.replace(/^add order\s*/i, "");
@@ -151,17 +192,21 @@ function handleCommand(message, sender) {
 
     if (!parsed || !parsed.name || !parsed.date) {
       return (
-        "⚠️ Usage: `@bot add order <name> <DD-MM-YYYY> [HH.MM]`\n" +
-        "Example: `@bot add order My Big Order 21-06-2026 08.00`\n" +
-        "Note: Name max 3 words."
+        "⚠️ Usage: `@bot add order <nama> [(<kue>)] <DD-MM-YYYY> [HH.MM]`\n" +
+        "Example: `@bot add order Budi Santoso (Black Forest Cake) 21-06-2026 08.00`\n" +
+        "Note: Name max 3 words. Nama kue optional, dibungkus kurung ()."
       );
     }
 
-    const { name, date, time } = parsed;
+    const { name, cake, date, time } = parsed;
 
     // Validate name
     const nameCheck = validateName(name);
     if (!nameCheck.valid) return nameCheck.message;
+
+    // Validate cake
+    const cakeCheck = validateCakeName(cake);
+    if (!cakeCheck.valid) return cakeCheck.message;
 
     // Validate date
     if (!isValidDate(date)) {
@@ -181,14 +226,15 @@ function handleCommand(message, sender) {
       );
     }
 
-    const result = addOrder(name.toUpperCase(), date, time || null);
+    const result = addOrder(name.toUpperCase(), date, time || null, cake);
     if (!result.success) return result.message;
 
     const o = result.order;
+    const cakeStr = o.cake ? `\nCake: *${o.cake}*` : "";
     const timeStr = o.time ? ` at *${formatTime(o.time)}*` : "";
     return (
       `✅ Order saved!\n` +
-      `Order: *${o.name}*\n` +
+      `Name: *${o.name}*${cakeStr}\n` +
       `Date: ${formatDate(o.date)}${timeStr}`
     );
   }
@@ -215,27 +261,30 @@ function handleCommand(message, sender) {
 
     if (!target) {
       return (
-        "⚠️ Usage: `@bot delete <name|number>`\n" +
-        "Example: `@bot delete My Big Order` or `@bot delete 1`"
+        "⚠️ Usage: `@bot delete <nama|nomor>`\n" +
+        "Example: `@bot delete Budi Santoso` or `@bot delete 1`"
       );
     }
 
     const result = deleteOrder(target);
     if (!result.success) return result.message;
 
+    const cakeStr = result.order.cake ? `\nCake: *${result.order.cake}*` : "";
     return (
       `🗑️ Deleted!\n` +
-      `Order: *${result.order.name}*\n` +
+      `Name: *${result.order.name}*${cakeStr}\n` +
       `Date: ${formatDate(result.order.date)}`
     );
   }
 
   // ── EDIT ──────────────────────────────────────────────────────────────────
   // Usage:
-  //   @bot edit <name|number> name <new name max 3 words>
-  //   @bot edit <name|number> date <DD-MM-YYYY>
-  //   @bot edit <name|number> time <HH.MM>
-  //   @bot edit <name|number> time clear
+  //   @bot edit <nama|nomor> nama <nama baru>
+  //   @bot edit <nama|nomor> tanggal <DD-MM-YYYY>
+  //   @bot edit <nama|nomor> jam <HH.MM>
+  //   @bot edit <nama|nomor> jam clear
+  //   @bot edit <nama|nomor> kue <kue baru>
+  //   @bot edit <nama|nomor> kue clear
   if (cleaned.startsWith("edit")) {
     const argStr = original.replace(/^edit\s*/i, "").trim();
     const parsed = parseEditArgs(argStr);
@@ -243,31 +292,33 @@ function handleCommand(message, sender) {
     if (!parsed) {
       return (
         "⚠️ Usage:\n" +
-        "`@bot edit <name|number> name <new name>`\n" +
-        "`@bot edit <name|number> date <DD-MM-YYYY>`\n" +
-        "`@bot edit <name|number> time <HH.MM>`\n" +
-        "`@bot edit <name|number> time clear`\n" +
-        "Note: Name max 3 words."
+        "`@bot edit <nama|nomor> nama <nama baru>`\n" +
+        "`@bot edit <nama|nomor> tanggal <DD-MM-YYYY>`\n" +
+        "`@bot edit <nama|nomor> jam <HH.MM>`\n" +
+        "`@bot edit <nama|nomor> jam clear`\n" +
+        "`@bot edit <nama|nomor> kue <kue baru>`" +
+        "`@bot edit <nama|nomor> kue clear`" +
+        "Note: Nama max 3 kata"
       );
     }
 
     const { target, field, newValue } = parsed;
 
     // Validate field
-    if (!["name", "date", "time"].includes(field)) {
-      return `⚠️ Unknown field: *${field}*\nAllowed fields: name, date, time.`;
+    if (!["nama", "tanggal", "jam", "kue"].includes(field)) {
+      return `⚠️ Unknown field: *${field}*\nAvailable fields: nama, tanggal, jam, kue.`;
     }
 
     const updates = {};
 
-    if (field === "name") {
+    if (field === "nama") {
       // Validate new name
       const nameCheck = validateName(newValue);
       if (!nameCheck.valid) return nameCheck.message;
 
       updates.name = newValue.toUpperCase();
 
-    } else if (field === "date") {
+    } else if (field === "tanggal") {
       if (!isValidDate(newValue)) {
         return (
           `⚠️ Invalid date: *${newValue}*\n` +
@@ -276,7 +327,7 @@ function handleCommand(message, sender) {
       }
       updates.date = newValue;
 
-    } else if (field === "time") {
+    } else if (field === "jam") {
       if (newValue.toLowerCase() === "clear") {
         // Remove time from order
         updates.time = null;
@@ -288,16 +339,26 @@ function handleCommand(message, sender) {
       } else {
         updates.time = newValue;
       }
+
+    } else if (field === "kue") {
+      if (newValue.toLowerCase() === "clear") {
+        updates.cake = null;
+      } else {
+        const cakeCheck = validateCakeName(newValue);
+        if (!cakeCheck.valid) return cakeCheck.message;
+        updates.cake = newValue;
+      }
     }
 
     const result = editOrder(target, updates);
     if (!result.success) return result.message;
 
     const o = result.order;
+    const cakeStr = o.cake ? `\nCake: *${o.cake}*` : "";
     const timeStr = o.time ? ` at *${formatTime(o.time)}*` : "";
     return (
       `✏️ Order updated!\n` +
-      `Order: *${o.name}*\n` +
+      `Name: *${o.name}*${cakeStr}\n` +
       `Date: ${formatDate(o.date)}${timeStr}`
     );
   }
@@ -305,13 +366,14 @@ function handleCommand(message, sender) {
   // ── HELP / FALLBACK ───────────────────────────────────────────────────────
   return (
     "🤖 *Available commands:*\n" +
-    "`@bot add order <name> <DD-MM-YYYY> [HH.MM]`\n" +
+    "`@bot add order <nama> [(<kue>)] <DD-MM-YYYY> [HH.MM]`\n" +
     "`@bot list`\n" +
-    "`@bot delete <name|number>`\n" +
-    "`@bot edit <name|number> name <new name>`\n" +
-    "`@bot edit <name|number> date <DD-MM-YYYY>`\n" +
-    "`@bot edit <name|number> time <HH.MM>`\n" +
-    "_Name max 3 words. Time is optional (24h format)._"
+    "`@bot delete <nama|nomor>`\n" +
+    "`@bot edit <nama|nomor> nama <nama baru>`\n" +
+    "`@bot edit <nama|nomor> tanggal <DD-MM-YYYY>`\n" +
+    "`@bot edit <nama|nomor> jam <HH.MM>`\n" +
+    "`@bot edit <nama|nomor> kue <kue baru>`\n" +
+    "\n📌 Note: \n- Nama max 3 kata \n- Kue optional, dibungkus kurung () \n- Jam optional (24h format)"
   );
 }
 
