@@ -21,8 +21,9 @@ function writeOrders(orders) {
  * @param {string} name
  * @param {string} date - DD-MM-YYYY
  * @param {string|null} time - HH.MM (optional)
+ * @param {string|null} cake - cake name (optional)
  */
-function addOrder(name, date, time = null) {
+function addOrder(name, date, time = null, cake = null) {
   const orders = readOrders();
 
   const duplicate = orders.find(
@@ -35,6 +36,7 @@ function addOrder(name, date, time = null) {
   const newOrder = {
     id: Date.now(),
     name,
+    cake,      // nullable
     date,      // DD-MM-YYYY
     time,      // HH.MM or null
     createdAt: new Date().toISOString(),
@@ -84,7 +86,7 @@ function deleteOrder(nameOrNumber) {
  * Edit an existing order by name or list number.
  * Only updates the fields that are provided.
  * @param {string} nameOrNumber
- * @param {object} updates - { name?, date?, time? }
+ * @param {object} updates - { name?, date?, time?, cake? }
  */
 function editOrder(nameOrNumber, updates) {
   const orders = readOrders();
@@ -120,6 +122,7 @@ function editOrder(nameOrNumber, updates) {
   if (updates.name) orders[index].name = updates.name.toUpperCase();
   if (updates.date) orders[index].date = updates.date;
   if (updates.hasOwnProperty("time")) orders[index].time = updates.time;
+  if (updates.hasOwnProperty("cake")) orders[index].cake = updates.cake;
 
   orders[index].updatedAt = new Date().toISOString();
 
