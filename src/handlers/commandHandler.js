@@ -1,5 +1,7 @@
 const { addOrder, deleteOrder, editOrder, listOrders } = require("../services/orderService");
 const { isValidDate, isValidTime, formatDate, formatTime } = require("../utils/dateUtils");
+const { readReservations } = require("../services/reservationService");
+const { formatDateISO } = require("../utils/dateUtils");
 require("dotenv").config();
 
 const BOT_MENTION = process.env.BOT_MENTION || "@bot";
@@ -240,16 +242,33 @@ function handleCommand(message, sender) {
   }
 
   // ── LIST ──────────────────────────────────────────────────────────────────
-  // Usage: @bot list
+  // Usage:
+  //   @bot list           → ask to specify type
+  //   @bot list order      → list orders
+  //   @bot list reservation → list reservations
   if (cleaned === "list") {
-    const orders = listOrders();
+    return "Please specify type: order or reservation";
+  }
 
-    if (orders.length === 0) {
-      return "📋 No orders saved yet.";
-    }
+  if (cleaned === "list order") {
+    const orders = listOrders();
+    if (orders.length === 0) return "📋 No orders saved yet.";
 
     const lines = orders.map((o, i) => formatOrderLine(o, i + 1));
     return `📋 *Order List (${orders.length}):*\n${lines.join("\n")}`;
+  }
+
+  if (cleaned === "list reservation") {
+    const reservations = readReservations();
+    if (reservations.length === 0) return "📅 No reservations found.";
+
+    const lines = reservations.map((r, i) => {
+      const timeStr = r.time ? ` - ${r.time}` : "";
+      const areaStr = r.area ? ` - ${r.area}` : "";
+      return `${i + 1}. ${r.name} - ${formatDateISO(r.date)}${timeStr}${areaStr}`;
+    });
+
+    return `📅 *Reservation List*\n${lines.join("\n")}`;
   }
 
   // ── DELETE ────────────────────────────────────────────────────────────────
@@ -366,14 +385,14 @@ function handleCommand(message, sender) {
   // ── HELP / FALLBACK ───────────────────────────────────────────────────────
   return (
     "🤖 *Available commands:*\n" +
+    "`@bot list <order/reservation>`\n" +
     "`@bot add order <nama> [(<kue>)] <DD-MM-YYYY> [HH.MM]`\n" +
-    "`@bot list`\n" +
-    "`@bot delete <nama|nomor>`\n" +
-    "`@bot edit <nama|nomor> nama <nama baru>`\n" +
-    "`@bot edit <nama|nomor> tanggal <DD-MM-YYYY>`\n" +
-    "`@bot edit <nama|nomor> jam <HH.MM>`\n" +
-    "`@bot edit <nama|nomor> kue <kue baru>`\n" +
-    "\n📌 Note: \n- Nama max 3 kata \n- Kue optional, dibungkus kurung () \n- Jam optional (24h format)"
+    "`@bot delete <nama/nomor>`\n" +
+    "`@bot edit <nama/nomor> nama <nama baru>`\n" +
+    "`@bot edit <nama/nomor> tanggal <DD-MM-YYYY>`\n" +
+    "`@bot edit <nama/nomor> jam <HH.MM>`\n" +
+    "`@bot edit <nama/nomor> kue <kue baru>`\n" +
+    "\n📌 Note: \n- add, edit dan delete hanya untuk order \n- Nama max 3 kata \n- Kue optional, dibungkus kurung () \n- Jam optional (24h format)"
   );
 }
 
