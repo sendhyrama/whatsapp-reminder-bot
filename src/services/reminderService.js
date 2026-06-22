@@ -1,121 +1,187 @@
 const cron = require("node-cron");
 const { readOrders, deleteOrder } = require("./orderService");
+const { readReservations, syncReservations } = require("./reservationService");
+const { wasSent, markSent } = require("./reminderTrackerService");
 const { sendMessage } = require("./whatsappService");
-const { daysUntil, formatDate, formatTime } = require("../utils/dateUtils");
+const {
+  daysUntil, formatDate, formatTime,       // order helpers (DD-MM-YYYY)
+  daysUntilISO, formatDateISO,              // reservation helpers (ISO)
+} = require("../utils/dateUtils");
 require("dotenv").config();
 
-// ── CONFIG: Which days before the order date to send reminders ───────────────
 const REMINDER_DAYS = [3, 2, 1];
+const REMINDER_CRON = "0 8 * * *";       // daily reminder check at 08:00
+const SYNC_CRON = "*/30 * * * *";        // sync sheet every 30 minutes
 
-// ── CONFIG: What time of day the cron job runs ────────────────────────────────
-const CRON_SCHEDULE = "0 8 * * *";
+// ── Formatters ────────────────────────────────────────────────────────────────
 
-/**
- * Format a single order line for use inside a reminder section.
- * @param {object} order
- * @param {number} index - 1-based
- * @returns {string}
- */
 function formatOrderLine(order, index) {
   const cakeStr = order.cake ? ` (${order.cake})` : "";
   const timeStr = order.time ? ` ${formatTime(order.time)}` : "";
   return `${index}. *${order.name}*${cakeStr} — ${formatDate(order.date)}${timeStr}`;
 }
 
-/**
- * Build ONE combined reminder message containing all stages
- * (H-3, H-2, H-1, D-Day) that currently have matching orders.
- * Stages with no orders are skipped entirely.
- *
- * @param {object} grouped - { 3: [...orders], 2: [...], 1: [...], 0: [...] }
- * @returns {string|null} - null if there's nothing to send
- */
-function buildCombinedReminderMessage(grouped) {
-  const sections = [];
+function formatReservationLine(res, index) {
+  const timeStr = res.time ? ` - ${res.time}` : "";
+  const areaStr = res.area ? ` - ${res.area}` : "";
+  return `${index}. *${res.name}* — ${formatDateISO(res.date)}${timeStr}${areaStr}`;
+}
 
-  // Sort descending: H-3 → H-2 → H-1 → D-Day(0)
-  const stages = Object.keys(grouped)
-    .map(Number)
-    .sort((a, b) => b - a);
+/**
+ * Build the full combined daily reminder message across
+ * orders + reservations, grouped by H-stage.
+ * @param {object} orderGroups - { 3: [...], 2: [...], 1: [...], 0: [...] }
+ * @param {object} resGroups - same shape but for reservations
+ * @returns {string|null}
+ */
+function buildCombinedMessage(orderGroups, resGroups) {
+  const sections = [];
+  const stages = [3, 2, 1, 0];
 
   for (const days of stages) {
-    const orders = grouped[days];
-    if (!orders || orders.length === 0) continue;
+    const orders = orderGroups[days] || [];
+    const reservations = resGroups[days] || [];
 
-    const lines = orders.map((o, i) => formatOrderLine(o, i + 1));
+    if (orders.length === 0 && reservations.length === 0) continue;
+
     const heading = days === 0 ? "🚨 *Today (D-Day)*" : `🔔 *H-${days}*`;
+    const lines = [];
+
+    if (orders.length > 0) {
+      lines.push("_Orders:_");
+      orders.forEach((o, i) => lines.push(formatOrderLine(o, i + 1)));
+    }
+
+    if (reservations.length > 0) {
+      lines.push("_Reservations:_");
+      reservations.forEach((r, i) => lines.push(formatReservationLine(r, i + 1)));
+    }
 
     sections.push(`${heading}\n${lines.join("\n")}`);
   }
 
-  // Nothing to remind about today
   if (sections.length === 0) return null;
 
-  return (
-    `📅 *Daily Order Reminder*\n\n` +
-    sections.join("\n\n") +
-    `\n\nTolong disiapin ya 🙏`
-  );
+  return `📅 *Daily Reminder*\n\n${sections.join("\n\n")}\n\nJangan lupa disiapin ya 🙏`;
 }
 
 /**
- * Check all orders, group them by reminder stage,
- * and send ONE combined message containing all stages.
- * Also removes orders that have already passed.
+ * Group orders by day-distance, skipping ones already reminded for that stage.
+ */
+function groupOrders() {
+  const orders = readOrders();
+  const grouped = {};
+  const passed = [];
+
+  for (const order of orders) {
+    const days = daysUntil(order.date);
+
+    if (REMINDER_DAYS.includes(days) || days === 0) {
+      const key = `order:${order.id}:H-${days}`;
+      if (wasSent(key)) continue; // already reminded for this stage
+
+      if (!grouped[days]) grouped[days] = [];
+      grouped[days].push(order);
+    } else if (days < 0) {
+      passed.push(order);
+    }
+  }
+
+  return { grouped, passed };
+}
+
+/**
+ * Group reservations by day-distance, skipping ones already reminded.
+ */
+function groupReservations() {
+  const reservations = readReservations();
+  const grouped = {};
+
+  for (const res of reservations) {
+    const days = daysUntilISO(res.date);
+
+    if (REMINDER_DAYS.includes(days) || days === 0) {
+      const key = `reservation:${res.name}:${res.date}:H-${days}`;
+      if (wasSent(key)) continue;
+
+      if (!grouped[days]) grouped[days] = [];
+      grouped[days].push(res);
+    }
+  }
+
+  return grouped;
+}
+
+/**
+ * Mark all items in the built message as sent, so we never duplicate.
+ */
+function markAllSent(orderGroups, resGroups) {
+  for (const days of Object.keys(orderGroups)) {
+    orderGroups[days].forEach((o) => markSent(`order:${o.id}:H-${days}`));
+  }
+  for (const days of Object.keys(resGroups)) {
+    resGroups[days].forEach((r) => markSent(`reservation:${r.name}:${r.date}:H-${days}`));
+  }
+}
+
+/**
+ * Main reminder check — combines orders + reservations into ONE message.
  */
 async function checkAndSendReminders() {
-  const orders = readOrders();
   const target = process.env.GROUP_TARGET;
-
   if (!target) {
     console.error("[Reminder] GROUP_TARGET is not set in .env");
     return;
   }
 
-  console.log(`[Reminder] Checking ${orders.length} order(s)...`);
+  const { grouped: orderGroups, passed } = groupOrders();
+  const resGroups = groupReservations();
 
-  // ── Group orders by their day-distance (e.g. { 3: [...], 1: [...] }) ───────
-  const grouped = {};
-  const passedOrders = [];
+  console.log("[Reminder] Order groups:", Object.keys(orderGroups));
+  console.log("[Reminder] Reservation groups:", Object.keys(resGroups));
 
-  for (const order of orders) {
-    const days = daysUntil(order.date);
-    console.log(`[Reminder] Order "${order.name}" → ${days} day(s) until ${order.date}`);
-
-    if (REMINDER_DAYS.includes(days) || days === 0) {
-      if (!grouped[days]) grouped[days] = [];
-      grouped[days].push(order);
-    } else if (days < 0) {
-      passedOrders.push(order);
-    }
-  }
-
-  // ── Send ONE combined message for all stages ─────────────────────────────────
-  const message = buildCombinedReminderMessage(grouped);
+  const message = buildCombinedMessage(orderGroups, resGroups);
 
   if (message) {
     await sendMessage(target, message);
+    markAllSent(orderGroups, resGroups);
   } else {
-    console.log("[Reminder] No reminders to send today.");
+    console.log("[Reminder] Nothing to remind today.");
   }
 
-  // ── Clean up passed orders ───────────────────────────────────────────────────
-  for (const order of passedOrders) {
+  // Clean up passed orders (reservations are already filtered at sync time)
+  for (const order of passed) {
     console.log(`[Reminder] Order "${order.name}" has passed. Removing.`);
     deleteOrder(order.name);
   }
 }
 
 /**
- * Start the reminder scheduler using CRON_SCHEDULE config above.
+ * Start both schedulers: sheet sync + reminder check.
  */
 function startReminderScheduler() {
-  console.log(`[Reminder] Scheduler started — cron: "${CRON_SCHEDULE}"`);
+  console.log(`[Reminder] Reminder cron: "${REMINDER_CRON}"`);
+  console.log(`[Reminder] Sheet sync cron: "${SYNC_CRON}"`);
 
-  cron.schedule(CRON_SCHEDULE, async () => {
+  // Sync reservations periodically
+  cron.schedule(SYNC_CRON, async () => {
+    try {
+      await syncReservations();
+    } catch (err) {
+      console.error("[Reminder] Sheet sync failed:", err.message);
+    }
+  });
+
+  // Daily reminder check
+  cron.schedule(REMINDER_CRON, async () => {
     console.log("[Reminder] Running scheduled reminder check...");
     await checkAndSendReminders();
   });
+
+  // Run an initial sync on startup so data isn't empty
+  syncReservations().catch((err) =>
+    console.error("[Reminder] Initial sheet sync failed:", err.message)
+  );
 }
 
 module.exports = { startReminderScheduler, checkAndSendReminders };
