@@ -64,4 +64,76 @@ function toSortable(dateStr) {
   return dayjs(dateStr, "DD-MM-YYYY").format("YYYY-MM-DD");
 }
 
-module.exports = { isValidDate, isValidTime, formatDate, formatTime, daysUntil, toSortable };
+/**
+ * Parse a sheet date "M/D/YYYY" (e.g. "6/26/2026") into ISO format YYYY-MM-DD.
+ * Handles single or double digit month/day.
+ * @param {string} sheetDate - e.g. "6/26/2026"
+ * @returns {string|null} - "2026-06-26" or null if invalid
+ */
+function parseSheetDate(sheetDate) {
+  if (!sheetDate) return null;
+
+  const parsed = dayjs(sheetDate.trim(), "M/D/YYYY", false); // non-strict: allows 6 or 06
+
+  if (!parsed.isValid()) {
+    console.warn(`[dateUtils] Invalid sheet date: "${sheetDate}"`);
+    return null;
+  }
+
+  return parsed.format("YYYY-MM-DD");
+}
+
+/**
+ * Extract start time from a range string like "15.30 - 17.30" → "15:30".
+ * Robust to extra spaces or different dash characters.
+ * @param {string} waktu - e.g. "15.30 - 17.30"
+ * @returns {string|null} - "15:30" or null if invalid
+ */
+function parseSheetTime(waktu) {
+  if (!waktu) return null;
+
+  // Split on common dash variants: -, –, —
+  const parts = waktu.split(/[-–—]/);
+  if (parts.length === 0) return null;
+
+  const start = parts[0].trim(); // e.g. "15.30"
+
+  // Validate format X.XX or XX.XX
+  const match = start.match(/^(\d{1,2})\.(\d{2})$/);
+  if (!match) {
+    console.warn(`[dateUtils] Invalid time format: "${waktu}"`);
+    return null;
+  }
+
+  const hour = match[1].padStart(2, "0");
+  const minute = match[2];
+
+  return `${hour}:${minute}`;
+}
+
+/**
+ * Format an ISO date (YYYY-MM-DD) into human-readable form.
+ * e.g. "2026-06-26" → "26 June 2026"
+ * Separate from formatDate() which expects DD-MM-YYYY (used by orders).
+ * @param {string} isoDate - YYYY-MM-DD
+ * @returns {string}
+ */
+function formatDateISO(isoDate) {
+  return dayjs(isoDate, "YYYY-MM-DD").format("D MMMM YYYY");
+}
+
+/**
+ * Calculate days until an ISO date (YYYY-MM-DD) from today.
+ * Separate from daysUntil() which expects DD-MM-YYYY (used by orders).
+ * @param {string} isoDate - YYYY-MM-DD
+ * @returns {number}
+ */
+function daysUntilISO(isoDate) {
+  const today = dayjs().startOf("day");
+  const target = dayjs(isoDate, "YYYY-MM-DD").startOf("day");
+  return target.diff(today, "day");
+}
+
+module.exports = { isValidDate, isValidTime, formatDate, formatTime, daysUntil, toSortable,
+  parseSheetDate, parseSheetTime, formatDateISO, daysUntilISO,
+};
