@@ -1,7 +1,7 @@
 const { addOrder, deleteOrder, editOrder, listOrders } = require("../services/orderService");
 const { isValidDate, isValidTime, formatDate, formatTime } = require("../utils/dateUtils");
 const { readReservations } = require("../services/reservationService");
-const { formatDateISO } = require("../utils/dateUtils");
+const { formatReservationBlock } = require("../utils/formatUtils");
 require("dotenv").config();
 
 const BOT_MENTION = process.env.BOT_MENTION || "@bot";
@@ -262,13 +262,9 @@ function handleCommand(message, sender) {
     const reservations = readReservations();
     if (reservations.length === 0) return "📅 No reservations found.";
 
-    const lines = reservations.map((r, i) => {
-      const timeStr = r.time ? ` - ${r.time}` : "";
-      const areaStr = r.area ? ` - ${r.area}` : "";
-      return `${i + 1}. ${r.name} - ${formatDateISO(r.date)}${timeStr}${areaStr}`;
-    });
+    const blocks = reservations.map((r, i) => formatReservationBlock(r, i + 1));
 
-    return `📅 *Reservation List*\n${lines.join("\n")}`;
+    return `📅 *Reservation List*\n\n${blocks.join("\n\n")}`;
   }
 
   // ── DELETE ────────────────────────────────────────────────────────────────

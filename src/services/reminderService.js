@@ -7,6 +7,7 @@ const {
   daysUntil, formatDate, formatTime,       // order helpers (DD-MM-YYYY)
   daysUntilISO, formatDateISO,              // reservation helpers (ISO)
 } = require("../utils/dateUtils");
+const { formatReservationBlock } = require("../utils/formatUtils");
 require("dotenv").config();
 
 const ORDER_REMINDER_DAYS = [3, 2, 1];   // D-3, D-2, D-1
@@ -20,12 +21,6 @@ function formatOrderLine(order, index) {
   const cakeStr = order.cake ? ` (${order.cake})` : "";
   const timeStr = order.time ? ` ${formatTime(order.time)}` : "";
   return `${index}. *${order.name}*${cakeStr} — ${formatDate(order.date)}${timeStr}`;
-}
-
-function formatReservationLine(res, index) {
-  const timeStr = res.time ? ` - ${res.time}` : "";
-  const areaStr = res.area ? ` - ${res.area}` : "";
-  return `${index}. *${res.name}* — ${formatDateISO(res.date)}${timeStr}${areaStr}`;
 }
 
 /**
@@ -55,7 +50,7 @@ function buildCombinedMessage(orderGroups, resGroups) {
 
     if (reservations.length > 0) {
       lines.push("_Reservations:_");
-      reservations.forEach((r, i) => lines.push(formatReservationLine(r, i + 1)));
+      reservations.forEach((r, i) => lines.push(formatReservationBlock(r, i + 1)));
     }
 
     sections.push(`${heading}\n${lines.join("\n")}`);
@@ -63,7 +58,7 @@ function buildCombinedMessage(orderGroups, resGroups) {
 
   if (sections.length === 0) return null;
 
-  return `📅 *Daily Reminder*\n\n${sections.join("\n\n")}\n\nJangan lupa disiapin ya 🙏`;
+  return `📅 *Daily Reminder*\n\n${sections.join("\n\n")}\n\nPlease prepare 🙏`;
 }
 
 /**

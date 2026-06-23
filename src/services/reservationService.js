@@ -47,13 +47,31 @@ function normalizeRow(row) {
   const date = parseSheetDate(row["Tanggal"]);
   const time = parseSheetTime(row["Waktu"]);
   const area = (row["Area"] || "").trim();
+  const tableDecor = (row["Table Decor"] || "").trim();
+  const paket = (row["Paket"] || "").trim();
+  const addOn = (row["Add On"] || "").trim();
+  const reqTulisan = (row["Req Tulisan"] || "").trim();
+  const statusPembayaran = (row["Status Pembayaran"] || "").trim();
+  const note = (row["Note"] || "").trim();
 
   if (!name || !date) {
     console.warn("[Reservation] Skipping invalid row:", row);
     return null;
   }
 
-  return { name, date, time, area, type: "reservation" };
+  return {
+    name,
+    date,
+    time,
+    area,
+    tableDecor,
+    paket,
+    addOn,
+    reqTulisan,
+    statusPembayaran,
+    note,
+    type: "reservation",
+  };
 }
 
 /**
