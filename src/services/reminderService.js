@@ -9,7 +9,8 @@ const {
 } = require("../utils/dateUtils");
 require("dotenv").config();
 
-const REMINDER_DAYS = [3, 2, 1];
+const ORDER_REMINDER_DAYS = [3, 2, 1];   // D-3, D-2, D-1
+const RESERVATION_REMINDER_DAYS = [1];   // D-1 only
 const REMINDER_CRON = "0 8 * * *";       // daily reminder check at 08:00
 const SYNC_CRON = "*/30 * * * *";        // sync sheet every 30 minutes
 
@@ -76,7 +77,7 @@ function groupOrders() {
   for (const order of orders) {
     const days = daysUntil(order.date);
 
-    if (REMINDER_DAYS.includes(days) || days === 0) {
+    if (ORDER_REMINDER_DAYS.includes(days) || days === 0) {
       const key = `order:${order.id}:H-${days}`;
       if (wasSent(key)) continue; // already reminded for this stage
 
@@ -100,7 +101,7 @@ function groupReservations() {
   for (const res of reservations) {
     const days = daysUntilISO(res.date);
 
-    if (REMINDER_DAYS.includes(days) || days === 0) {
+    if (RESERVATION_REMINDER_DAYS.includes(days) || days === 0) {
       const key = `reservation:${res.name}:${res.date}:H-${days}`;
       if (wasSent(key)) continue;
 
