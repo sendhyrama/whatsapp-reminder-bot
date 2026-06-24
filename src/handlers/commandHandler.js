@@ -264,7 +264,7 @@ function handleCommand(message, sender) {
 
     const blocks = reservations.map((r, i) => formatReservationBlock(r, i + 1));
 
-    return `📅 *Reservation List*\n\n${blocks.join("\n\n")}`;
+    return `📅 *Reservation List (${reservations.length}):*\n\n${blocks.join("\n\n")}`;
   }
 
   // ── DELETE ────────────────────────────────────────────────────────────────

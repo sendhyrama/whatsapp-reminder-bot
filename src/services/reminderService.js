@@ -41,19 +41,19 @@ function buildCombinedMessage(orderGroups, resGroups) {
     if (orders.length === 0 && reservations.length === 0) continue;
 
     const heading = days === 0 ? "🚨 *Today (D-Day)*" : `🔔 *H-${days}*`;
-    const lines = [];
+    const blockParts = [];
 
     if (orders.length > 0) {
-      lines.push("_Orders:_");
-      orders.forEach((o, i) => lines.push(formatOrderLine(o, i + 1)));
+      const orderLines = orders.map((o, i) => formatOrderLine(o, i + 1));
+      blockParts.push(`_Orders:_\n${orderLines.join("\n")}`);
     }
 
     if (reservations.length > 0) {
-      lines.push("_Reservations:_");
-      reservations.forEach((r, i) => lines.push(formatReservationBlock(r, i + 1)));
+      const resBlocks = reservations.map((r, i) => formatReservationBlock(r, i + 1));
+      blockParts.push(`_Reservations:_\n${resBlocks.join("\n\n")}`);   // ← double newline between reservation blocks
     }
 
-    sections.push(`${heading}\n${lines.join("\n")}`);
+    sections.push(`${heading}\n${blockParts.join("\n\n")}`);
   }
 
   if (sections.length === 0) return null;
