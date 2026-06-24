@@ -8,11 +8,9 @@
 function formatReservationBlock(res, index) {
     const val = (v) => (v && v.trim() ? v : "-");
   
-    const lines = [`${index}.⁠ ⁠*${res.name}*`];
-  
     const timeRange = val(res.timeRange);
-    const area = val(res.area);
-    lines.push(`•⁠  ⁠${timeRange} (${area})`);
+    const lines = [`${index}.⁠ ⁠*${res.name}* | ${timeRange}`];
+    lines.push(`•⁠  ⁠Area: ${val(res.area)}`);
     lines.push(`•⁠  ⁠Paket: ${val(res.paket)}`);
     lines.push(`•⁠  ⁠Table Decor: ${val(res.tableDecor)}`);
     lines.push(`•⁠  ⁠Req Tulisan: ${val(res.reqTulisan)}`);
