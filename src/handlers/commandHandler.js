@@ -1,7 +1,7 @@
 const { addOrder, deleteOrder, editOrder, listOrders } = require("../services/orderService");
 const { isValidDate, isValidTime, formatDate, formatTime } = require("../utils/dateUtils");
 const { readReservations } = require("../services/reservationService");
-const { formatReservationBlock } = require("../utils/formatUtils");
+const { formatOrderLine, formatReservationBlock } = require("../utils/formatUtils");
 require("dotenv").config();
 
 const BOT_MENTION = process.env.BOT_MENTION || "@bot";
@@ -130,18 +130,6 @@ function isBotMentioned(message) {
   return message.toLowerCase().includes(BOT_MENTION.toLowerCase());
 }
 
-/**
- * Format a single order as a list line.
- * e.g. "1. *BUDI* (Black Forest Cake) — 21 June 2026 08:00"
- * @param {object} order
- * @param {number} index - 1-based
- * @returns {string}
- */
-function formatOrderLine(order, index) {
-  const dateTimeStr = order.time ? `${formatDate(order.date)} ${order.time}` : formatDate(order.date);
-  const cakeStr = order.cake ? `\n•⁠  ${order.cake}` : "";
-  return `${index}. *${order.name}* | ${dateTimeStr}${cakeStr}`;
-}
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 

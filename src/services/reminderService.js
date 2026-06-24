@@ -7,7 +7,7 @@ const {
   daysUntil, formatDate, formatTime,       // order helpers (DD-MM-YYYY)
   daysUntilISO, formatDateISO,              // reservation helpers (ISO)
 } = require("../utils/dateUtils");
-const { formatReservationBlock } = require("../utils/formatUtils");
+const { formatOrderLine, formatReservationBlock } = require("../utils/formatUtils");
 require("dotenv").config();
 
 const ORDER_REMINDER_DAYS = [3, 2, 1];   // D-3, D-2, D-1
@@ -16,12 +16,6 @@ const REMINDER_CRON = "0 8 * * *";       // daily reminder check at 08:00
 const SYNC_CRON = "*/30 * * * *";        // sync sheet every 30 minutes
 
 // ── Formatters ────────────────────────────────────────────────────────────────
-
-function formatOrderLine(order, index) {
-  const dateTimeStr = order.time ? `${formatDate(order.date)} ${order.time}` : formatDate(order.date);
-  const cakeStr = order.cake ? `\n•⁠  ${order.cake}` : "";
-  return `${index}. *${order.name}* | ${dateTimeStr}${cakeStr}`;
-}
 
 /**
  * Build order reminder message.
