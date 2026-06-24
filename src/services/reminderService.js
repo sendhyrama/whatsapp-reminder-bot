@@ -24,41 +24,49 @@ function formatOrderLine(order, index) {
 }
 
 /**
- * Build the full combined daily reminder message across
- * orders + reservations, grouped by H-stage.
+ * Build order reminder message.
  * @param {object} orderGroups - { 3: [...], 2: [...], 1: [...], 0: [...] }
- * @param {object} resGroups - same shape but for reservations
  * @returns {string|null}
  */
-function buildCombinedMessage(orderGroups, resGroups) {
+function buildOrderMessage(orderGroups) {
   const sections = [];
   const stages = [3, 2, 1, 0];
 
   for (const days of stages) {
     const orders = orderGroups[days] || [];
-    const reservations = resGroups[days] || [];
+    if (orders.length === 0) continue;
 
-    if (orders.length === 0 && reservations.length === 0) continue;
-
-    const heading = days === 0 ? "🚨 *Today (D-Day)*" : `🔔 *H-${days}*`;
-    const blockParts = [];
-
-    if (orders.length > 0) {
-      const orderLines = orders.map((o, i) => formatOrderLine(o, i + 1));
-      blockParts.push(`_Orders:_\n${orderLines.join("\n")}`);
-    }
-
-    if (reservations.length > 0) {
-      const resBlocks = reservations.map((r, i) => formatReservationBlock(r, i + 1));
-      blockParts.push(`_Reservations:_\n${resBlocks.join("\n\n")}`);   // ← double newline between reservation blocks
-    }
-
-    sections.push(`${heading}\n${blockParts.join("\n\n")}`);
+    const heading = days === 0 ? "🚨 *TODAY*" : `🔔 *H-${days}*`;
+    const orderLines = orders.map((o, i) => formatOrderLine(o, i + 1));
+    sections.push(`${heading}\n${orderLines.join("\n")}`);
   }
 
   if (sections.length === 0) return null;
 
-  return `📅 *Daily Reminder*\n\n${sections.join("\n\n")}\n\nPlease prepare 🙏`;
+  return `📋 *Order Reminder*\n\n${sections.join("\n\n")}\n\nTolong disiapin ya 🙏`;
+}
+
+/**
+ * Build reservation reminder message.
+ * @param {object} resGroups - { 3: [...], 2: [...], 1: [...], 0: [...] }
+ * @returns {string|null}
+ */
+function buildReservationMessage(resGroups) {
+  const sections = [];
+  const stages = [1, 0];
+
+  for (const days of stages) {
+    const reservations = resGroups[days] || [];
+    if (reservations.length === 0) continue;
+
+    const heading = days === 0 ? "🚨 *TODAY*" : `🔔 *H-${days}*`;
+    const resBlocks = reservations.map((r, i) => formatReservationBlock(r, i + 1));
+    sections.push(`${heading}\n${resBlocks.join("\n\n")}`);
+  }
+
+  if (sections.length === 0) return null;
+
+  return `📅 *Reservation Reminder*\n\n${sections.join("\n\n")}\n\nTolong disiapin ya 🙏`;
 }
 
 /**
@@ -121,7 +129,7 @@ function markAllSent(orderGroups, resGroups) {
 }
 
 /**
- * Main reminder check — combines orders + reservations into ONE message.
+ * Main reminder check — sends separate messages for orders and reservations.
  */
 async function checkAndSendReminders() {
   const target = process.env.GROUP_TARGET;
@@ -136,10 +144,19 @@ async function checkAndSendReminders() {
   console.log("[Reminder] Order groups:", Object.keys(orderGroups));
   console.log("[Reminder] Reservation groups:", Object.keys(resGroups));
 
-  const message = buildCombinedMessage(orderGroups, resGroups);
+  // Build and send order reminder
+  const orderMessage = buildOrderMessage(orderGroups);
+  if (orderMessage) {
+    await sendMessage(target, orderMessage);
+  }
 
-  if (message) {
-    await sendMessage(target, message);
+  // Build and send reservation reminder
+  const resMessage = buildReservationMessage(resGroups);
+  if (resMessage) {
+    await sendMessage(target, resMessage);
+  }
+
+  if (orderMessage || resMessage) {
     markAllSent(orderGroups, resGroups);
   } else {
     console.log("[Reminder] Nothing to remind today.");
