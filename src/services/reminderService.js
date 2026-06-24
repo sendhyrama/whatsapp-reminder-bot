@@ -18,9 +18,9 @@ const SYNC_CRON = "*/30 * * * *";        // sync sheet every 30 minutes
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 function formatOrderLine(order, index) {
-  const cakeStr = order.cake ? ` (${order.cake})` : "";
-  const timeStr = order.time ? ` ${formatTime(order.time)}` : "";
-  return `${index}. *${order.name}*${cakeStr} — ${formatDate(order.date)}${timeStr}`;
+  const dateTimeStr = order.time ? `${formatDate(order.date)} ${order.time}` : formatDate(order.date);
+  const cakeStr = order.cake ? `\n•⁠  ${order.cake}` : "";
+  return `${index}. *${order.name}* | ${dateTimeStr}${cakeStr}`;
 }
 
 /**
