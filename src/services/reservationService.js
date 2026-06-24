@@ -43,35 +43,37 @@ function parseCSV(csvText) {
  * @returns {object|null}
  */
 function normalizeRow(row) {
-  const name = (row["Nama"] || "").trim();
-  const date = parseSheetDate(row["Tanggal"]);
-  const time = parseSheetTime(row["Waktu"]);
-  const area = (row["Area"] || "").trim();
-  const tableDecor = (row["Table Decor"] || "").trim();
-  const paket = (row["Paket"] || "").trim();
-  const addOn = (row["Add On"] || "").trim();
-  const reqTulisan = (row["Req Tulisan"] || "").trim();
-  const statusPembayaran = (row["Status Pembayaran"] || "").trim();
-  const note = (row["Note"] || "").trim();
+    const name = (row["Nama"] || "").trim();
+    const date = parseSheetDate(row["Tanggal"]);
+    const time = parseSheetTime(row["Waktu"]);        // "18:30" — used for day/hour-based reminder logic if needed later
+    const timeRange = (row["Waktu"] || "").trim();     // e.g. "18.30 - 20.30"
+    const area = (row["Area"] || "").trim();
+    const tableDecor = (row["Table Decor"] || "").trim();
+    const paket = (row["Paket"] || "").trim();
+    const addOn = (row["Add On"] || "").trim();
+    const reqTulisan = (row["Req Tulisan"] || "").trim();
+    const statusPembayaran = (row["Status Pembayaran"] || "").trim();
+    const note = (row["Note"] || "").trim();
 
-  if (!name || !date) {
-    console.warn("[Reservation] Skipping invalid row:", row);
-    return null;
-  }
+    if (!name || !date) {
+      console.warn("[Reservation] Skipping invalid row:", row);
+      return null;
+    }
 
-  return {
-    name,
-    date,
-    time,
-    area,
-    tableDecor,
-    paket,
-    addOn,
-    reqTulisan,
-    statusPembayaran,
-    note,
-    type: "reservation",
-  };
+    return {
+      name,
+      date,
+      time,
+      timeRange,
+      area,
+      tableDecor,
+      paket,
+      addOn,
+      reqTulisan,
+      statusPembayaran,
+      note,
+      type: "reservation",
+    };
 }
 
 /**

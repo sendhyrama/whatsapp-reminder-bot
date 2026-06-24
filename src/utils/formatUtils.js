@@ -6,14 +6,13 @@
  * @returns {string}
  */
 function formatReservationBlock(res, index) {
-    // Helper: return value or "-" if empty
     const val = (v) => (v && v.trim() ? v : "-");
   
     const lines = [`${index}.⁠ ⁠*${res.name}*`];
   
-    const time = val(res.time);
+    const timeRange = val(res.timeRange);
     const area = val(res.area);
-    lines.push(`•  ⁠${time} (${area})`);
+    lines.push(`•⁠  ⁠${timeRange} (${area})`);
     lines.push(`•⁠  ⁠Paket: ${val(res.paket)}`);
     lines.push(`•⁠  ⁠Table Decor: ${val(res.tableDecor)}`);
     lines.push(`•⁠  ⁠Req Tulisan: ${val(res.reqTulisan)}`);
