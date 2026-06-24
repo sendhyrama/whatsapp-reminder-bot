@@ -30,7 +30,7 @@ function formatOrderLine(order, index) {
  */
 function buildOrderMessage(orderGroups) {
   const sections = [];
-  const stages = [3, 2, 1, 0];
+  const stages = [0, 1, 2, 3];
 
   for (const days of stages) {
     const orders = orderGroups[days] || [];
@@ -53,7 +53,7 @@ function buildOrderMessage(orderGroups) {
  */
 function buildReservationMessage(resGroups) {
   const sections = [];
-  const stages = [1, 0];
+  const stages = [0, 1];
 
   for (const days of stages) {
     const reservations = resGroups[days] || [];
